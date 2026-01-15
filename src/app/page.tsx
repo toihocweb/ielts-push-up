@@ -146,16 +146,17 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selectedModel }),
+        cache: 'no-store'
       });
 
       if (!response.ok) throw new Error('Failed to fetch random word');
 
       const data = await response.json();
-      if (data.word) {
-        setQuery(data.word);
-        await performSearch(data.word);
+      if (data.sentence) {
+        setQuery(data.sentence);
+        await performSearch(data.sentence);
       } else {
-        throw new Error('No word returned from API');
+        throw new Error('No sentence returned from API');
       }
     } catch (err) {
       console.error(err);
@@ -300,8 +301,13 @@ export default function Home() {
           </div>
 
           {loading && (
-            <div className={styles.loading}>
-              Generating examples with <strong>{selectedModel}</strong>...
+            <div className={styles.resultsGrid}>
+              {[1, 2, 3].map((i) => (
+                <div key={i} className={styles.skeleton}>
+                  <div className={styles.skeletonLine} />
+                  <div className={styles.skeletonLine} style={{ width: '70%' }} />
+                </div>
+              ))}
             </div>
           )}
 
@@ -373,8 +379,13 @@ export default function Home() {
           </div>
 
           {loading && (
-            <div className={styles.loading}>
-              Generating response with <strong>{selectedModel}</strong>...
+            <div className={styles.speakingResult}>
+              <div className={styles.skeleton}>
+                <div className={styles.skeletonLine} style={{ width: '40%', marginBottom: '1rem' }} />
+                <div className={styles.skeletonLine} />
+                <div className={styles.skeletonLine} />
+                <div className={styles.skeletonLine} style={{ width: '80%' }} />
+              </div>
             </div>
           )}
 
