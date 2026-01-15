@@ -1,66 +1,411 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import { useState, useEffect } from 'react';
+import styles from './page.module.css';
+import InstallPrompt from '@/components/InstallPrompt';
+
+interface Result {
+  original: string;
+  translation: string;
+  match_original: string;
+  match_translation: string;
+}
+
+interface Model {
+  id: string;
+  object: string;
+}
 
 export default function Home() {
+  const [mode, setMode] = useState<'vocab' | 'speaking'>('vocab'); // 'vocab' | 'speaking'
+
+  // Vocab State
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Result[]>([]);
+
+  // Speaking State
+  const [speakingTopic, setSpeakingTopic] = useState('');
+  const [speakingBand, setSpeakingBand] = useState('7.0');
+  const [speakingPart, setSpeakingPart] = useState('1');
+  const [speakingResult, setSpeakingResult] = useState<{ question: string; answer: string; key_features?: string[] } | null>(null);
+
+  // Common State
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedModel, setSelectedModel] = useState('meta-llama/llama-4-maverick-17b-128e-instruct');
+
+  const [popover, setPopover] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    text: string;
+    data: { ipa?: string; part_of_speech?: string; meaning?: string; translation?: string } | null;
+    loading: boolean;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    text: '',
+    data: null,
+    loading: false
+  });
+
+
+
+  useEffect(() => {
+    const handleMouseUp = async () => {
+      const selection = window.getSelection();
+      if (!selection || selection.toString().trim().length === 0) {
+        setTimeout(() => {
+          const sel = window.getSelection();
+          if (!sel || sel.toString().trim().length === 0) {
+            setPopover(prev => ({ ...prev, visible: false }));
+          }
+        }, 100);
+        return;
+      }
+
+      const text = selection.toString().trim();
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      const x = rect.left + (rect.width / 2);
+      const y = rect.top + window.scrollY - 10;
+
+      setPopover({
+        visible: true,
+        x,
+        y,
+        text,
+        data: null,
+        loading: true
+      });
+
+      try {
+        const response = await fetch('/api/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, model: selectedModel }),
+        });
+        const data = await response.json();
+        setPopover(prev => {
+          if (prev.text !== text) return prev;
+          return { ...prev, loading: false, data };
+        });
+      } catch (err) {
+        console.error(err);
+        setPopover(prev => ({ ...prev, loading: false, visible: false }));
+      }
+    };
+
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [selectedModel]);
+
+  // Vocab Logic
+  const performSearch = async (searchQuery: string) => {
+    if (!searchQuery.trim()) return;
+
+    setLoading(true);
+    setError('');
+    setResults([]);
+    setPopover(p => ({ ...p, visible: false }));
+
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phrase: searchQuery, model: selectedModel }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch data');
+
+      const data = await response.json();
+      if (data.sentences) {
+        setResults(data.sentences);
+      } else {
+        setError('Invalid response format');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    performSearch(query);
+  };
+
+  const handleRandom = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: selectedModel }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch random word');
+
+      const data = await response.json();
+      if (data.word) {
+        setQuery(data.word);
+        await performSearch(data.word);
+      } else {
+        throw new Error('No word returned from API');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Failed to generate random word. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // Speaking Logic
+  const handleSpeakingGenerate = async () => {
+    if (!speakingTopic.trim()) return;
+
+    setLoading(true);
+    setError('');
+    setSpeakingResult(null);
+
+    try {
+      const response = await fetch('/api/speaking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: speakingTopic,
+          band: speakingBand,
+          part: speakingPart,
+          model: selectedModel
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to generate speaking');
+
+      const data = await response.json();
+      setSpeakingResult(data);
+    } catch (err) {
+      console.error(err);
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const highlightText = (text: string, highlight: string) => {
+    if (!highlight.trim()) return text;
+    const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.toLowerCase() === highlight.toLowerCase() ? (
+            <span key={i} className={styles.highlight}>{part}</span>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  };
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className={styles.container}>
+      <InstallPrompt />
+      {popover.visible && (
+        <div
+          className={styles.popover}
+          style={{
+            left: popover.x,
+            top: popover.y,
+            transform: 'translate(-50%, -100%) translateY(-10px)'
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {popover.loading ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Looking up definitions...</div>
+          ) : popover.data ? (
+            <>
+              <div className={styles.popoverHeader}>
+                <span className={styles.popoverWord}>{popover.text}</span>
+                {popover.data.ipa && <span className={styles.popoverIpa}>{popover.data.ipa}</span>}
+              </div>
+              {popover.data.part_of_speech && <span className={styles.popoverType}>{popover.data.part_of_speech}</span>}
+              <div className={styles.popoverBody}>
+                {popover.data.meaning}
+                {popover.data.translation && (
+                  <div style={{ marginTop: '0.5rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                    {popover.data.translation}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: '#ef4444' }}>Failed to load definition</div>
+          )}
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      )}
+
+
+
+      <div className={styles.hero}>
+        <h1 className={styles.title}>IELTS Push-Up</h1>
+        <div className={styles.modeSwitcher}>
+          <div
+            className={styles.glider}
+            style={{ transform: mode === 'vocab' ? 'translateX(0)' : 'translateX(100%)' }}
+          />
+          <button
+            className={`${styles.modeBtn} ${mode === 'vocab' ? styles.modeBtnActive : ''}`}
+            onClick={() => setMode('vocab')}
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Vocabulary
+          </button>
+          <button
+            className={`${styles.modeBtn} ${mode === 'speaking' ? styles.modeBtnActive : ''}`}
+            onClick={() => setMode('speaking')}
           >
-            Documentation
-          </a>
+            Speaking
+          </button>
         </div>
-      </main>
-    </div>
+        <p className={styles.subtitle}>Supercharge your vocabulary. Boost your Band Score.</p>
+      </div>
+
+      {mode === 'vocab' ? (
+        <div key="vocab" className={styles.tabContent}>
+          <div className={styles.searchWrapper}>
+            <form onSubmit={handleSearch} className={styles.inputGroup}>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="Enter a word or phrase..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <button type="submit" className={styles.searchIcon} aria-label="Search">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </button>
+              <button type="button" className={styles.shuffleBtn} onClick={handleRandom} title="Random IELTS Word">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l5 5M4 4l5 5" />
+                </svg>
+              </button>
+            </form>
+          </div>
+
+          {loading && (
+            <div className={styles.loading}>
+              Generating examples with <strong>{selectedModel}</strong>...
+            </div>
+          )}
+
+          {error && (
+            <div style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</div>
+          )}
+
+          <div className={styles.resultsGrid}>
+            {results.map((item, index) => (
+              <div
+                key={index}
+                className={styles.card}
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                <p className={styles.sentence}>
+                  {highlightText(item.original, item.match_original || query)}
+                </p>
+                <p className={styles.translation}>
+                  {highlightText(item.translation, item.match_translation || '')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div key="speaking" className={styles.tabContent}>
+          <div className={styles.searchWrapper}>
+            <div className={styles.speakingForm}>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="Enter a Topic (e.g., Hometown, Technology, Music)"
+                value={speakingTopic}
+                onChange={(e) => setSpeakingTopic(e.target.value)}
+              />
+
+              <div className={styles.row}>
+                <div className={styles.selectGroup}>
+                  <select
+                    className={styles.select}
+                    value={speakingBand}
+                    onChange={(e) => setSpeakingBand(e.target.value)}
+                  >
+                    <option value="6.0">Band 6.0</option>
+                    <option value="6.5">Band 6.5</option>
+                    <option value="7.0">Band 7.0</option>
+                    <option value="7.5">Band 7.5</option>
+                    <option value="8.0">Band 8.0</option>
+                    <option value="9.0">Band 9.0</option>
+                  </select>
+                </div>
+                <div className={styles.selectGroup}>
+                  <select
+                    className={styles.select}
+                    value={speakingPart}
+                    onChange={(e) => setSpeakingPart(e.target.value)}
+                  >
+                    <option value="1">Part 1</option>
+                    <option value="2">Part 2</option>
+                    <option value="3">Part 3</option>
+                  </select>
+                </div>
+              </div>
+
+              <button className={styles.generateBtn} onClick={handleSpeakingGenerate} disabled={loading}>
+                {loading ? 'Generating...' : 'Generate Answer'}
+              </button>
+            </div>
+          </div>
+
+          {loading && (
+            <div className={styles.loading}>
+              Generating response with <strong>{selectedModel}</strong>...
+            </div>
+          )}
+
+          {error && (
+            <div style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</div>
+          )}
+
+          {speakingResult && (
+            <div className={styles.speakingResult}>
+              <span className={styles.questionLabel}>Question</span>
+              <p className={styles.question}>{speakingResult.question}</p>
+
+              <span className={styles.answerLabel}>Band {speakingBand} Answer</span>
+              <div className={styles.answer}>
+                {speakingResult.answer}
+              </div>
+
+              {speakingResult.key_features && (
+                <div className={styles.features}>
+                  <p className={styles.featureTitle}>Key Features:</p>
+                  <div className={styles.featureList}>
+                    {speakingResult.key_features.map((feature: string, i: number) => (
+                      <span key={i} className={styles.featureTag}>{feature}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </main>
   );
 }
