@@ -28,6 +28,8 @@ export default function Home() {
   const [speakingBand, setSpeakingBand] = useState('7.0');
   const [speakingPart, setSpeakingPart] = useState('1');
   const [speakingResult, setSpeakingResult] = useState<{ question: string; answer: string; key_features?: string[] } | null>(null);
+  const [fineTuneInstruction, setFineTuneInstruction] = useState('');
+  const [showFineTune, setShowFineTune] = useState(false);
 
   // Common State
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,13 @@ export default function Home() {
     x: number;
     y: number;
     text: string;
-    data: { ipa?: string; part_of_speech?: string; meaning?: string; translation?: string } | null;
+    data: {
+      ipa?: string;
+      part_of_speech?: string;
+      meaning?: string;
+      translation?: string;
+      synonyms?: string[];
+    } | null;
     loading: boolean;
   }>({
     visible: false,
@@ -69,6 +77,12 @@ export default function Home() {
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
 
+      // Capture context (surrounding text)
+      let context = '';
+      if (selection.anchorNode && selection.anchorNode.parentElement) {
+        context = selection.anchorNode.parentElement.textContent || '';
+      }
+
       const x = rect.left + (rect.width / 2);
       const y = rect.top + window.scrollY - 10;
 
@@ -85,7 +99,7 @@ export default function Home() {
         const response = await fetch('/api/lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, model: selectedModel }),
+          body: JSON.stringify({ text, context, model: selectedModel }),
         });
         const data = await response.json();
         setPopover(prev => {
@@ -166,6 +180,41 @@ export default function Home() {
   };
 
   // Speaking Logic
+  const handleFineTune = async () => {
+    if (!fineTuneInstruction.trim() || !speakingResult) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/speaking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: speakingTopic, // Keep context
+          band: speakingBand,
+          part: speakingPart,
+          model: selectedModel,
+          instruction: fineTuneInstruction,
+          question: speakingResult.question,
+          original_answer: speakingResult.answer
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fine-tune answer');
+
+      const data = await response.json();
+      setSpeakingResult(data);
+      setFineTuneInstruction('');
+      setShowFineTune(false);
+    } catch (err) {
+      console.error(err);
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSpeakingGenerate = async () => {
     if (!speakingTopic.trim()) return;
 
@@ -240,6 +289,16 @@ export default function Home() {
                 {popover.data.translation && (
                   <div style={{ marginTop: '0.5rem', color: '#94a3b8', fontStyle: 'italic' }}>
                     {popover.data.translation}
+                  </div>
+                )}
+                {popover.data.synonyms && popover.data.synonyms.length > 0 && (
+                  <div className={styles.popoverSynonyms}>
+                    <span className={styles.synonymsLabel}>Synonyms:</span>
+                    <div className={styles.synonymsList}>
+                      {popover.data.synonyms.map((syn, i) => (
+                        <span key={i} className={styles.synonymTag}>{syn}</span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -413,6 +472,42 @@ export default function Home() {
                   </div>
                 </div>
               )}
+
+              <div className={styles.fineTuneSection}>
+                {!showFineTune ? (
+                  <button
+                    className={styles.fineTuneBtn}
+                    onClick={() => setShowFineTune(true)}
+                  >
+                    Fine-tune Answer
+                  </button>
+                ) : (
+                  <div className={styles.fineTuneForm}>
+                    <textarea
+                      className={styles.fineTuneInput}
+                      placeholder="e.g., Make it more formal, Add an idiom about rain..."
+                      value={fineTuneInstruction}
+                      onChange={(e) => setFineTuneInstruction(e.target.value)}
+                    />
+                    <div className={styles.fineTuneActions}>
+                      <button
+                        className={styles.generateBtn}
+                        onClick={handleFineTune}
+                        disabled={loading}
+                        style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
+                      >
+                        {loading ? 'Refining...' : 'Regenerate'}
+                      </button>
+                      <button
+                        className={styles.cancelBtn}
+                        onClick={() => setShowFineTune(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

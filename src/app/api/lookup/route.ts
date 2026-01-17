@@ -7,7 +7,7 @@ const groq = new Groq({
 
 export async function POST(request: Request) {
     try {
-        const { text, model } = await request.json();
+        const { text, context, model } = await request.json();
 
         if (!text) {
             return NextResponse.json({ error: 'Text required' }, { status: 400 });
@@ -15,17 +15,22 @@ export async function POST(request: Request) {
 
         const prompt = `
       Provide a concise dictionary definition for the text: "${text}".
+      
+      **Context:** "${context || 'No context provided'}"
+
       1. "ipa": IPA pronunciation (if applicable).
       2. "part_of_speech": Part of speech (e.g., Verb, Noun).
       3. "meaning": A simple, easy-to-understand English explanation.
       4. "translation": Vietnamese translation of the meaning.
+      5. "synonyms": List 2-3 **contextually appropriate** synonyms or replacement phrases that can replace "${text}" in the given context. If the context is missing, provide general synonyms.
 
       Return STRICTLY a JSON object with this format (no other text):
       {
         "ipa": "/.../",
         "part_of_speech": "...",
         "meaning": "...",
-        "translation": "..."
+        "translation": "...",
+        "synonyms": ["...", "..."]
       }
     `;
 

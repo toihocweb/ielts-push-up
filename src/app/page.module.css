@@ -530,3 +530,103 @@
     opacity: 1;
   }
 }
+
+.fineTuneSection {
+  margin-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 1.5rem;
+}
+
+.fineTuneBtn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.fineTuneBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.fineTuneForm {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 1rem;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.fineTuneInput {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 1rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  resize: vertical;
+  min-height: 80px;
+  margin-bottom: 1rem;
+}
+
+.fineTuneInput:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.fineTuneActions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.cancelBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+
+.cancelBtn:hover {
+  color: #ef4444;
+}
+
+.popoverSynonyms {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.synonymsLabel {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.synonymsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.synonymTag {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
