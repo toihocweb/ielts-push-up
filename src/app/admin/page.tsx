@@ -151,7 +151,7 @@ export default function AdminPage() {
                             onInput={handleTextChange}
                             onMouseUp={handleMouseUp}
                             onBlur={handleTextChange}
-                            placeholder="Write your answer here..."
+                            data-placeholder="Write your answer here..."
                         />
                         <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
                             * Select text to see highlighting options.

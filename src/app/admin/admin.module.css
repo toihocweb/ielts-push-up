@@ -130,6 +130,14 @@
     border-color: var(--accent-color);
 }
 
+.richEditor:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    display: block;
+    /* For Firefox */
+}
+
 .highlightToolbar {
     display: flex;
     gap: 0.5rem;
