@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
 import InstallPrompt from '@/components/InstallPrompt';
+import Link from 'next/link';
 
 interface Result {
   original: string;
@@ -36,6 +37,8 @@ export default function Home() {
   const [error, setError] = useState('');
   const [selectedModel, setSelectedModel] = useState('meta-llama/llama-4-maverick-17b-128e-instruct');
 
+  const popoverRef = useRef<HTMLDivElement>(null);
+
   const [popover, setPopover] = useState<{
     visible: boolean;
     x: number;
@@ -60,61 +63,107 @@ export default function Home() {
 
 
 
-  useEffect(() => {
-    const handleMouseUp = async () => {
-      const selection = window.getSelection();
-      if (!selection || selection.toString().trim().length === 0) {
-        setTimeout(() => {
-          const sel = window.getSelection();
-          if (!sel || sel.toString().trim().length === 0) {
-            setPopover(prev => ({ ...prev, visible: false }));
-          }
-        }, 100);
-        return;
-      }
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    text: string;
+    context: string;
+  } | null>(null);
 
+  // Context Menu Handler
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    if (!selection || selection.toString().trim().length === 0) return;
+
+    // Check if click is inside valid lookup areas:
+    // 1. .card (Vocab results)
+    // 2. .answer (Speaking answer)
+    // 3. .question (Speaking question - Optional? User said "chi ap dung cho cau tra loi" -> Answer only. But let's check exact phrasing "tuong tu voi speaking". Usually question is useful too, but user specifically said "answer". I will restrict to answer/card.)
+
+    let node = e.target as HTMLElement;
+    let isValidArea = false;
+    while (node && node !== e.currentTarget) { // e.currentTarget is main container
+      if (node.classList && (
+        node.classList.contains(styles.card) ||
+        node.classList.contains(styles.answer)
+      )) {
+        isValidArea = true;
+        break;
+      }
+      node = node.parentElement as HTMLElement;
+    }
+
+    if (isValidArea) {
+      e.preventDefault(); // Block default browser menu
       const text = selection.toString().trim();
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
+      const context = selection.anchorNode?.parentElement?.textContent || '';
 
-      // Capture context (surrounding text)
-      let context = '';
-      if (selection.anchorNode && selection.anchorNode.parentElement) {
-        context = selection.anchorNode.parentElement.textContent || '';
+      setContextMenu({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+        text,
+        context
+      });
+      setPopover(prev => ({ ...prev, visible: false }));
+    }
+  };
+
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      // Close context menu if clicked outside
+      if (contextMenu?.visible && contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
       }
 
-      const x = rect.left + (rect.width / 2);
-      const y = rect.top + window.scrollY - 10;
-
-      setPopover({
-        visible: true,
-        x,
-        y,
-        text,
-        data: null,
-        loading: true
-      });
-
-      try {
-        const response = await fetch('/api/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, context, model: selectedModel }),
-        });
-        const data = await response.json();
-        setPopover(prev => {
-          if (prev.text !== text) return prev;
-          return { ...prev, loading: false, data };
-        });
-      } catch (err) {
-        console.error(err);
-        setPopover(prev => ({ ...prev, loading: false, visible: false }));
+      // Close popover if clicked outside
+      if (popover.visible && popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopover(prev => ({ ...prev, visible: false }));
       }
     };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [contextMenu, popover.visible]);
 
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [selectedModel]);
+  const handleLookup = async () => {
+    if (!contextMenu) return;
+
+    const { text, context, x, y } = contextMenu;
+    setContextMenu(null);
+
+    // Adjust y to account for scroll
+    const popX = x;
+    const popY = y + window.scrollY;
+
+    setPopover({
+      visible: true,
+      x: popX,
+      y: popY,
+      text,
+      data: null,
+      loading: true
+    });
+
+    try {
+      const response = await fetch('/api/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, context, model: selectedModel }),
+      });
+      const data = await response.json();
+      setPopover(prev => {
+        if (prev.text !== text) return prev;
+        return { ...prev, loading: false, data };
+      });
+    } catch (err) {
+      console.error(err);
+      setPopover(prev => ({ ...prev, loading: false, visible: false }));
+    }
+  };
 
   // Vocab Logic
   const performSearch = async (searchQuery: string) => {
@@ -240,7 +289,38 @@ export default function Home() {
       setSpeakingResult(data);
     } catch (err) {
       console.error(err);
-      setError('Something went wrong. Please try again.');
+      setError('Failed to generate speaking answer.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerateAnswer = async () => {
+    if (!speakingResult) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/speaking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: speakingTopic, // Keep context but not strictly needed for answer_only
+          band: speakingBand,
+          part: speakingPart,
+          model: selectedModel,
+          question: speakingResult.question, // Pass existing question
+          regenerate_type: 'answer_only' // Request new answer ONLY
+        }),
+      });
+
+      const data = await response.json();
+      // Update result but keep the original question (though API returns it too)
+      setSpeakingResult(data);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to regenerate answer.');
     } finally {
       setLoading(false);
     }
@@ -263,10 +343,25 @@ export default function Home() {
   };
 
   return (
-    <main className={styles.container}>
+    <main className={styles.container} onContextMenu={handleContextMenu}>
       <InstallPrompt />
+      {/* Custom Context Menu */}
+      {contextMenu && contextMenu.visible && (
+        <div
+          ref={contextMenuRef}
+          className={styles.contextMenu}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button onClick={handleLookup} className={styles.contextMenuBtn}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            Look up "{contextMenu.text.length > 15 ? contextMenu.text.slice(0, 15) + '...' : contextMenu.text}"
+          </button>
+        </div>
+      )}
+
       {popover.visible && (
         <div
+          ref={popoverRef}
           className={styles.popover}
           style={{
             left: popover.x,
@@ -453,13 +548,56 @@ export default function Home() {
           )}
 
           {speakingResult && (
-            <div className={styles.speakingResult}>
-              <span className={styles.questionLabel}>Question</span>
-              <p className={styles.question}>{speakingResult.question}</p>
+            <div className={styles.speakingResult} style={{ position: 'relative' }}>
+              <div className={styles.questionSection}>
+                <span className={styles.questionLabel}>Question</span>
+                <h3 className={styles.question}>{speakingResult.question}</h3>
+              </div>
 
-              <span className={styles.answerLabel}>Band {speakingBand} Answer</span>
-              <div className={styles.answer}>
-                {speakingResult.answer}
+              <div className={styles.answerSection}>
+                <span className={styles.answerLabel}>Band {speakingBand} Answer</span>
+                <p className={styles.answer}>
+                  {speakingResult.answer}
+                </p>
+
+                {popover.visible && (
+                  <div
+                    ref={popoverRef}
+                    className={styles.popover}
+                    style={{
+                      top: popover.y,
+                      left: popover.x,
+                      transform: 'translateX(-50%)'
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <div className={styles.popoverHeader}>
+                      <span className={styles.popoverWord}>{popover.text}</span>
+                    </div>
+                    <div className={styles.popoverBody}>
+                      {popover.loading ? (
+                        <div>Loading synonyms...</div>
+                      ) : (
+                        <>
+                          {popover.data?.synonyms && popover.data.synonyms.length > 0 && (
+                            <div className={styles.popoverSynonyms}>
+                              <span className={styles.synonymsLabel}>Better Synonyms (Contextual):</span>
+                              <div className={styles.synonymsList}>
+                                {popover.data.synonyms.map((syn, i) => (
+                                  <span key={i} className={styles.synonymTag}>{syn}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {!popover.loading && (!popover.data?.synonyms || popover.data.synonyms.length === 0) && (
+                            <div style={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>No synonyms found.</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {speakingResult.key_features && (
@@ -475,12 +613,30 @@ export default function Home() {
 
               <div className={styles.fineTuneSection}>
                 {!showFineTune ? (
-                  <button
-                    className={styles.fineTuneBtn}
-                    onClick={() => setShowFineTune(true)}
-                  >
-                    Fine-tune Answer
-                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', width: '100%' }}>
+                    <button
+                      className={styles.fineTuneBtn}
+                      onClick={() => setShowFineTune(true)}
+                      style={{ height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
+                        <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                      </svg>
+                      Fine-tune Answer
+                    </button>
+                    <button
+                      className={styles.fineTuneBtn}
+                      onClick={handleRegenerateAnswer}
+                      title="Regenerate Answer Only (Keep Question)"
+                      style={{ height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.08)' }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                    </button>
+                  </div>
                 ) : (
                   <div className={styles.fineTuneForm}>
                     <textarea

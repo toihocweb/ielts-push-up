@@ -7,9 +7,9 @@ const groq = new Groq({
 
 export async function POST(request: Request) {
     try {
-        const { topic, band, part, model, instruction, question, original_answer } = await request.json();
+        const { topic, band, part, model, instruction, question, original_answer, regenerate_type } = await request.json();
 
-        if ((!topic && !instruction) || !band || !part) {
+        if (regenerate_type !== 'answer_only' && ((!topic && !instruction) || !band || !part)) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         let prompt;
 
         if (instruction && question && original_answer) {
-            // Fine-tuning mode
+            // Fine-tuning mode (EXISTING)
             prompt = `
       Act as an expert IELTS Examiner.
       Task: Rewrite the following IELTS Speaking Part ${part} answer based on the user's instruction: "${instruction}".
@@ -51,20 +51,48 @@ export async function POST(request: Request) {
         "key_features": ["...", "..."]
       }
     `;
+        } else if (regenerate_type === 'answer_only' && question) {
+            // Regenerate Answer Only mode (NEW)
+            prompt = `
+             Act as an expert IELTS Examiner.
+             Task: Provide a DIFFERENT Sample Answer for the following IELTS Speaking Part ${part} question.
+             
+             **Context:**
+             - Question: "${question}"
+             - Target Band Score: ${band}
+       
+             **Criteria for Band ${band}:**
+             ${specificCriteria}
+       
+             **Requirements:**
+             1. **Keep the Question Identical**: The question must be the same as provided: "${question}".
+             2. **New Answer**: A spoken response (natural, conversational) that matches the **Band ${band}** score. It should be different from typical/generic answers if possible.
+             3. **Key Features**: List 3-4 keywords or grammatical structures used in this new answer.
+       
+             Return STRICTLY a JSON object with this format (no other text):
+             {
+               "question": "${question}",
+               "answer": "...",
+               "key_features": ["...", "..."]
+             }
+           `;
         } else {
-            // New Generation mode
+            // New Generation mode (UPDATED for Randomness)
+            const seed = Date.now(); // Simple randomness
             prompt = `
       Act as an expert IELTS Examiner.
-      Task: Generate a generic IELTS Speaking Part ${part} question about the topic: "${topic}".
+      Task: Generate a UNIQUE IELTS Speaking Part ${part} question about the topic: "${topic}".
       Then, provide a Sample Answer that strictly matches a **Band ${band}** score.
+
+      **Random Seed:** ${seed} (Ensure the question is different from previous valid questions about "${topic}")
 
       **Criteria for Band ${band}:**
       ${specificCriteria}
 
       **Requirements:**
-      1. **Question**: An authentic Part ${part} question.
-      2. **Answer**: A spoken response (natural, conversational) that demonstrates the exact level of vocabulary, grammar, and fluency for Band ${band}. DO NOT make it better or worse than Band ${band}.
-      3. **Key Features**: Briefly list 3-4 keywords or grammatical structures used in the answer that justify this band score.
+      1. **Question**: An authentic Part ${part} question related to "${topic}". Try to vary the angle (e.g., instead of just "Do you like...", ask "How has X changed...", "Is X popular...", etc.).
+      2. **Answer**: A spoken response (natural, conversational) that demonstrates the exact level of vocabulary, grammar, and fluency for Band ${band}.
+      3. **Key Features**: Briefly list 3-4 keywords or grammatical structures used in the answer.
 
       Return STRICTLY a JSON object with this format (no other text):
       {
@@ -81,7 +109,7 @@ export async function POST(request: Request) {
                 { role: 'user', content: prompt }
             ],
             model: model || 'llama-3.3-70b-versatile',
-            temperature: 0.7,
+            temperature: 0.9, // Increased temperature for more randomness
             stop: null,
             response_format: { type: 'json_object' }
         });
