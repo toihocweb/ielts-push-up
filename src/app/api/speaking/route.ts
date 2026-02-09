@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       ${specificCriteria}
 
       **Requirements:**
-      1. **Keep the Question Identical**: The question must be the same as provided.
+      1. **Keep the Question Identical**: You MUST use the exact same question as provided in the context: "${question}". DO NOT rephrase, paraphrase, or alter the question in any way (e.g., do NOT change "How has the way you make friends changed..." to "In what ways has social media influenced...").
       2. **Revised Answer**: A spoken response (natural, conversational) that incorporates the user's instruction while STRICTLY maintaining the vocabulary, grammar, and fluency level for **Band ${band}**.
       3. **Key Features**: Update the list of 3-4 keywords or grammatical structures to reflect the NEW answer.
 
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
              ${specificCriteria}
        
              **Requirements:**
-             1. **Keep the Question Identical**: The question must be the same as provided: "${question}".
+             1. **Keep the Question Identical**: You MUST use the exact same question as provided in the context: "${question}". DO NOT rephrase, paraphrase, or alter the question in any way.
              2. **New Answer**: A spoken response (natural, conversational) that matches the **Band ${band}** score. It should be different from typical/generic answers if possible.
              3. **Key Features**: List 3-4 keywords or grammatical structures used in this new answer.
        
@@ -81,16 +81,22 @@ export async function POST(request: Request) {
             const seed = Date.now(); // Simple randomness
             prompt = `
       Act as an expert IELTS Examiner.
-      Task: Generate a UNIQUE IELTS Speaking Part ${part} question about the topic: "${topic}".
+      Input provided by user: "${topic}".
+
+      Task: Determine if the input is a specific question or a general topic.
+      
+      1. **IF the input is a specific question** (e.g., "Do you like music?", "Describe a time...", "How has..."), use it EXACTLY as the "question" field.
+      2. **IF the input is a general topic** (e.g., "Music", "Hometown"), generate a UNIQUE IELTS Speaking Part ${part} question related to that topic.
+
       Then, provide a Sample Answer that strictly matches a **Band ${band}** score.
 
-      **Random Seed:** ${seed} (Ensure the question is different from previous valid questions about "${topic}")
+      **Random Seed:** ${seed} (Ensure the question is different from previous valid questions if generating a new one)
 
       **Criteria for Band ${band}:**
       ${specificCriteria}
 
       **Requirements:**
-      1. **Question**: An authentic Part ${part} question related to "${topic}". Try to vary the angle (e.g., instead of just "Do you like...", ask "How has X changed...", "Is X popular...", etc.).
+      1. **Question**: The question determined above (either the user's input or a generated one).
       2. **Answer**: A spoken response (natural, conversational) that demonstrates the exact level of vocabulary, grammar, and fluency for Band ${band}.
       3. **Key Features**: Briefly list 3-4 keywords or grammatical structures used in the answer.
 
