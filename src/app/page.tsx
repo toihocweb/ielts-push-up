@@ -35,7 +35,7 @@ export default function Home() {
   // Common State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedModel, setSelectedModel] = useState('meta-llama/llama-4-maverick-17b-128e-instruct');
+  const [selectedModel, setSelectedModel] = useState('qwen/qwen3-32b');
 
   const popoverRef = useRef<HTMLDivElement>(null);
 
