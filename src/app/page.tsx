@@ -36,6 +36,20 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedModel, setSelectedModel] = useState('qwen/qwen3-32b');
+  const [availableModels, setAvailableModels] = useState<Model[]>([]);
+
+  useEffect(() => {
+    fetch('/api/models')
+      .then(res => res.json())
+      .then(data => {
+        if (data.models && Array.isArray(data.models)) {
+          // Filter out whisper models (non-chat)
+          const chatModels = data.models.filter((m: Model) => !m.id.toLowerCase().includes('whisper'));
+          setAvailableModels(chatModels);
+        }
+      })
+      .catch(err => console.error('Failed to load models:', err));
+  }, []);
 
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -345,6 +359,23 @@ export default function Home() {
   return (
     <main className={styles.container} onContextMenu={handleContextMenu}>
       <InstallPrompt />
+      <div className={styles.modelSelectContainer}>
+        <select 
+          className={styles.modelSelect}
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+        >
+          {availableModels.length > 0 ? (
+            availableModels.map(model => (
+              <option key={model.id} value={model.id}>
+                {model.id}
+              </option>
+            ))
+          ) : (
+            <option value={selectedModel}>{selectedModel}</option>
+          )}
+        </select>
+      </div>
       {/* Custom Context Menu */}
       {contextMenu && contextMenu.visible && (
         <div
